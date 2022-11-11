@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/queue.h>
+#include<pthread.h>
 
 struct list_entry {
 	const char *key;
@@ -15,6 +16,7 @@ SLIST_HEAD(list_head, list_entry);
 
 struct hash_table_entry {
 	struct list_head list_head;
+	pthread_mutex_t lock;
 };
 
 struct hash_table_v2 {
@@ -28,6 +30,7 @@ struct hash_table_v2 *hash_table_v2_create()
 	for (size_t i = 0; i < HASH_TABLE_CAPACITY; ++i) {
 		struct hash_table_entry *entry = &hash_table->entries[i];
 		SLIST_INIT(&entry->list_head);
+		pthread_mutex_init(&entry->lock, NULL);
 	}
 	return hash_table;
 }
@@ -70,9 +73,12 @@ void hash_table_v2_add_entry(struct hash_table_v2 *hash_table,
                              const char *key,
                              uint32_t value)
 {
+
 	struct hash_table_entry *hash_table_entry = get_hash_table_entry(hash_table, key);
+	// pthread_mutex_lock(&hash_table_entry->lock);
 	struct list_head *list_head = &hash_table_entry->list_head;
 	struct list_entry *list_entry = get_list_entry(hash_table, key, list_head);
+	// pthread_mutex_unlock(&hash_table_entry->lock);
 
 	/* Update the value if it already exists */
 	if (list_entry != NULL) {
@@ -83,7 +89,9 @@ void hash_table_v2_add_entry(struct hash_table_v2 *hash_table,
 	list_entry = calloc(1, sizeof(struct list_entry));
 	list_entry->key = key;
 	list_entry->value = value;
+	pthread_mutex_lock(&hash_table_entry->lock);
 	SLIST_INSERT_HEAD(list_head, list_entry, pointers);
+	pthread_mutex_unlock(&hash_table_entry->lock);
 }
 
 uint32_t hash_table_v2_get_value(struct hash_table_v2 *hash_table,
@@ -101,6 +109,7 @@ void hash_table_v2_destroy(struct hash_table_v2 *hash_table)
 	for (size_t i = 0; i < HASH_TABLE_CAPACITY; ++i) {
 		struct hash_table_entry *entry = &hash_table->entries[i];
 		struct list_head *list_head = &entry->list_head;
+		pthread_mutex_destroy(&entry->lock);
 		struct list_entry *list_entry = NULL;
 		while (!SLIST_EMPTY(list_head)) {
 			list_entry = SLIST_FIRST(list_head);
